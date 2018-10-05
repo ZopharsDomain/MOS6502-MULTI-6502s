@@ -1,0 +1,273 @@
+; *****************************************************************************
+; *****************************************************************************
+;
+;                               6502 Emulator
+;                               =============
+;
+;       30-08-96:       Started mark 2 6502 Emulator. (day 1)
+;       02-09-96:       Completed it. (day 2)
+;
+; *****************************************************************************
+; *****************************************************************************
+
+_MSDOS   equ     021h
+
+; *****************************************************************************
+; *****************************************************************************
+;
+;       CPU Registers stored here. While emulating the following registere
+;       are used.
+;
+;       AX:Free
+;       BX:Free,used for addresses normally
+;       CL:Accumulator
+;       CH:Flags
+;       DL:N Flag Byte
+;       DH:Z Flag Byte
+;       BP:Program Counter
+;       SI:Reserved
+;       DI:Free
+;
+; *****************************************************************************
+; *****************************************************************************
+
+_X:     db      0                       ; X Index register
+_Y:     db      0                       ; Y Index register
+_S:     db      0                       ; Stack pointer
+
+NFlag   equ     080h                    ; 6502 flag bits
+VFlag   equ     040h
+BFlag   equ     010h
+DFlag   equ     008h
+IFlag   equ     004h
+ZFlag   equ     002h
+CFlag   equ     001h
+
+
+; *****************************************************************************
+; *****************************************************************************
+;
+;                       Emulation starts here
+;
+; *****************************************************************************
+; *****************************************************************************
+
+
+; *****************************************************************************
+;
+;                          Execute one command
+;
+; *****************************************************************************
+
+Execute:fetch   al
+        mov     bl,al
+        xor     bh,bh
+        mov     al,CycleTime[bx]
+        xor     ah,ah
+        add     si,ax
+        add     bx,bx
+        jmp     Vec6502[bx]
+
+; *****************************************************************************
+;
+;                           Reset the 6502 CPU
+;
+; *****************************************************************************
+
+Reset:  push    ax,bx
+        xor     ax,ax
+        mov     cx,ax                   ; acc = 0,flags = 0
+        mov     dx,ax                   ; sign/zero bytes = 0
+        mov     bp,ax                   ; PC = 0
+        mov     [_X],al                 ; x = y = 0
+        mov     [_Y],al
+        mov     si,0                    ; clock = 0
+        mov     byte [_S],0FFh          ; S = 255
+        mov     bx,0FFFCh
+        setf    BFlag                   ; set the break flag.
+        call    JumpIndirect
+        pop     bx,ax
+        ret
+
+; *****************************************************************************
+;
+;       Update the Z and N bits in the flag register from the values
+;       in the byte registers DH (Zero) and DL (Sign)
+;
+; *****************************************************************************
+
+UpdateFlagBits:
+        clearf  NFlag+ZFlag             ; clear zero & sign flags
+        cmp     dh,0                    ; set ZFlag if DH = 0
+        jnz     UFB1
+        setf    ZFlag
+UFB1:   test    dl,128                  ; set sign flag if DL = 0
+        jz      UFB2
+        setf    NFlag
+UFB2:   ret
+
+; *****************************************************************************
+;
+;                             Opcode cycle table
+;
+; *****************************************************************************
+
+CycleTime:
+;             0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+        db    7, 6, 2, 2, 2, 3, 5, 2, 3, 2, 2, 2, 2, 4, 6, 2,  ; 0
+        db    2, 5, 2, 2, 2, 4, 6, 2, 2, 4, 2, 2, 2, 4, 7, 2,  ; 1
+        db    6, 6, 2, 2, 3, 3, 5, 2, 4, 2, 2, 2, 4, 4, 6, 2,  ; 2
+        db    2, 5, 2, 2, 2, 4, 6, 2, 2, 4, 2, 2, 2, 4, 7, 2,  ; 3
+        db    6, 6, 2, 2, 2, 3, 5, 2, 3, 2, 2, 2, 3, 4, 6, 2,  ; 4
+        db    2, 5, 2, 2, 2, 4, 6, 2, 2, 4, 2, 2, 2, 4, 7, 2,  ; 5
+        db    6, 6, 2, 2, 2, 3, 5, 2, 4, 2, 2, 2, 5, 4, 6, 2,  ; 6
+        db    2, 5, 2, 2, 2, 4, 6, 2, 2, 4, 2, 2, 2, 4, 7, 2,  ; 7
+        db    2, 6, 2, 2, 3, 3, 3, 2, 2, 2, 2, 2, 4, 4, 4, 2,  ; 8
+        db    2, 6, 2, 2, 4, 4, 4, 2, 2, 5, 2, 2, 2, 5, 2, 2,  ; 9
+        db    2, 6, 2, 2, 3, 3, 3, 2, 2, 2, 2, 2, 4, 4, 4, 2,  ; a
+        db    2, 5, 2, 2, 4, 4, 4, 2, 2, 4, 2, 2, 4, 4, 4, 2,  ; b
+        db    2, 6, 2, 2, 3, 3, 5, 2, 2, 2, 2, 2, 4, 4, 6, 2,  ; c
+        db    2, 5, 2, 2, 2, 4, 6, 2, 2, 4, 2, 2, 2, 4, 7, 2,  ; d
+        db    2, 6, 2, 2, 3, 3, 5, 2, 2, 2, 2, 2, 4, 4, 6, 2,  ; e
+        db    2, 5, 2, 2, 2, 4, 6, 2, 2, 4, 2, 2, 2, 4, 7, 2   ; f
+
+; *****************************************************************************
+;
+;            Update the zero and sign registers from the flag bits
+;
+; *****************************************************************************
+
+UpdateByteRegisters:
+        xor     dx,dx                   ; make both of them zero
+        test    ch,NFlag                ; if S flag is non-zero
+        jz      UBR1
+        dec     dl                      ; dl = -1
+UBR1:   test    ch,ZFlag                ; if Z flag is zero
+        jnz     UBR2
+        dec     dh                      ; dh = -1
+UBR2:   ret
+
+; *****************************************************************************
+;
+;                               Dump the CPU
+;
+; *****************************************************************************
+
+echo    macro
+        mov     al,#1
+        call    ConOut
+#em
+
+reg16   macro
+        echo    #1
+        echo    ':'
+        mov     ax,#2
+        call    ConWord
+        echo    ' '
+#em
+
+reg8    macro
+        echo    #1
+        echo    ':'
+        mov     al,#2
+        call    ConHex
+        echo    ' '
+#em
+
+sbyte    macro
+        mov     bx,bp
+        add     bx,#1
+        read    al
+        call    ConHex
+#em
+
+Dump:   call    UpdateFlagBits
+        reg16   'P',bp
+        echo    '['
+        sbyte    0
+        sbyte    1
+        sbyte    2
+        echo    ']'
+        echo    ' '
+        reg8    'A',cl
+        reg8    'X',[_x]
+        reg8    'Y',[_y]
+        reg8    'S',[_s]
+        reg16   '#',SI
+        mov     ah,ch
+        mov     bx,0
+DFlags: mov     al,FlagName[bx]
+        test    ah,128
+        jnz     DFlagShow
+        mov     al,'.'
+DFlagShow:
+        call    ConOut
+        add     ah,ah
+        inc     bx
+        cmp     bx,8
+        jne     DFlags
+        mov     al,13
+        call    ConOut
+        ret
+FlagName:db    'NV*BDIZC'
+
+; *****************************************************************************
+;                          Output Hex Word in AX
+; *****************************************************************************
+ConWord:push    ax
+        mov     al,ah
+        call    ConHex
+        pop     ax
+        call    ConHex
+        ret
+; *****************************************************************************
+;                            Output Hex Byte in AL
+; *****************************************************************************
+ConHex: push    ax                      ; save ax
+        push    ax                      ; save for low byte
+        shr     ax,4                    ; high byte
+        call    ConHex2
+        pop     ax                      ; low byte
+        call    ConHex2
+        pop     ax
+        ret
+ConHex2:push    ax
+        and     ax,15                   ; print NIBL in hex
+        cmp     ax,10
+        jl      NotHexC
+        add     ax,7
+NotHexC:add     ax,'0'
+        call    ConOut
+        pop     ax
+        ret
+; *****************************************************************************
+;                       Input of Character into AL
+; *****************************************************************************
+ConIn:  push bx,cx,dx
+        mov  ah,8                       ; Read char from console (MS-DOS)
+        int  _MSDOS                     ; its now in AL
+        cmp  al,0                       ; extended ?
+        jnz  CINotX
+        mov  ah,8                       ; read next & set bit 7
+        int  _MSDOS
+        or   al,080h                    ; set bit 7
+CINotX: pop  dx,cx,bx
+        ret
+; *****************************************************************************
+;                         Output character in AL
+; *****************************************************************************
+ConOut: push ax,bx,cx,dx
+        cmp  al,0                       ; ignore NULL
+        je   CXOut
+        mov  dl,al
+        cmp  dl,13                      ; special code for CR
+        jne  NotCR
+        mov  al,10                      ; print CR & LF
+        Call ConOut
+        mov  dl,13
+NotCR:  mov  ah,6
+        int  _MSDOS
+CXOut:  pop  dx,cx,bx,ax
+        ret
+
+                              

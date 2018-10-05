@@ -1,0 +1,18 @@
+
+DOS = 33
+
+start:  mov     ax,cs                   ; ES ^ Memory space
+        add     ax,PMemory/16
+        mov     es,ax
+
+        CPUReset
+
+        CPUDump
+Loop1:  CPUExecute
+        CPUDump
+        jmp     Loop1
+
+DExit:  mov     ah,04Ch
+        int     DOS
+
+

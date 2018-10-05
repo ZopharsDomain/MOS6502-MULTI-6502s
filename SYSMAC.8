@@ -1,0 +1,93 @@
+; *****************************************************************************
+; *****************************************************************************
+;
+;              Main system macros. (Target System Dependent)
+;
+; *****************************************************************************
+; *****************************************************************************
+
+read    macro                           ; read byte at bx into #1,destroys bx
+        and     bx,0FFFh
+        mov     #1,es:[bx]
+#em
+
+write   macro                           ; write byte in #1 into bx,destroys bx
+        and     bx,0FFFh
+        mov     es:[bx],#1
+#em
+
+; *****************************************************************************
+;
+;       These macros can be optimised for the target system if needed
+;
+; *****************************************************************************
+
+readz   macro                           ; read byte at 00<BL> into #1
+        xor     bh,bh
+        read    #1
+#em
+
+writez  macro                           ; write byte in #1 to 00<BL>
+        xor     bh,bh
+        write   #1
+#em
+
+reads   macro                           ; read byte at 01<BL> into #1
+        mov     bh,1
+        read    #1
+#em
+
+writes  macro                           ; write byte in #1 to 01<BL>
+        mov     bh,1
+        write   #1
+#em
+
+fetch   macro                           ; fetch byte from PC to #1
+        mov     bx,bp                   ; and bump the PC
+        read    #1
+        inc     bp
+#em
+
+fetchaddr macro                         ; fetch word from PC to AX
+        fetch   al
+        fetch   ah
+#em
+
+indread macro                           ; read 00<bl> 00<bl+1> into BX
+        push    bx                      ; (used by IX & IY)
+        readz   al
+        pop     bx
+        inc     bl                      ; wrap around in page 0 here.
+        readz   ah
+        mov     bx,ax
+#em
+
+; *****************************************************************************
+;
+;                               Flag Bit macros
+;
+; *****************************************************************************
+
+Setf    macro                           ; Set given flags in P
+        or      ch,#1
+#em
+
+Clearf  macro                           ; Clear flags in P
+        and     ch,255-(#1)
+#em
+
+SetZ    macro                           ; set the z byte register
+        mov     dh,#1
+#em
+
+SetN    macro                           ; set the n byte register
+        mov     dl,#1
+#em
+
+SetZN   macro                           ; set both
+        setz    #1
+        setn    #1
+#em
+
+
+

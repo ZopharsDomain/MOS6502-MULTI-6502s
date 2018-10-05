@@ -1,0 +1,211 @@
+; ************************************************************************
+; ************************************************************************
+;
+;                       6502 Generation Macros
+;
+; ************************************************************************
+; ************************************************************************
+
+getcarry macro                          ; 6502 carry -> 8086 carry
+        clc
+        test    ch,CFlag
+        jz      >M1
+        stc
+M1:
+#em
+
+setcarry macro                          ; 8086 carry -> 6502 carry
+        jnc     >M1
+        setf    CFlag
+        jmp     >M2
+M1:     clearf  CFlag
+M2:
+#em
+
+; ************************************************************************
+;
+;                       Arithmetic & logic section
+;
+; ************************************************************************
+
+alu_adc macro                           ; add with carry cl to al
+        call    [AddVector]
+        setzn   cl
+#em
+
+alu_sbc macro                           ; subtract with carry cl from al
+        call    [SubVector]
+#em
+
+alu_and macro                           ; and cl and al
+        and     cl,al
+        setzn   cl
+#em
+
+alu_ora macro                           ; or cl,al
+        or      cl,al
+        setzn   cl
+#em
+
+alu_eor macro                           ; eor cl,al
+        xor     cl,al
+        setzn   cl
+#em
+
+alu_cmp macro                           ; cmp cl,al
+        push    cx                      ; save A & F
+        setf    CFlag                   ; set the carry
+        call    SubBinary               ; binary subtraction sets flags
+        pop     ax                      ; restore old A
+        mov     cl,al
+#em
+
+alu_inc macro                           ; increment al
+        inc     al
+        setzn   al
+#em
+
+alu_dec macro                           ; decrement al
+        dec     al
+        setzn   al
+#em
+
+alu_lsr macro                           ; logical shift right al -> carry
+        clearf  CFlag
+        mov     ah,al
+        shr     al,1
+        and     al,07Fh
+        test    ah,1
+        jz      >M1
+        setf    CFlag
+M1:
+#em
+
+alu_asl macro                           ; arithemtic shift left al -> carry
+        xor     ah,ah
+        add     ax,ax
+        clearf  CFlag
+        test    ah,1
+        jz      >M1
+        setf    CFlag
+M1:
+#em
+
+alu_rol macro                           ; rotate left al + carry
+        xor     ah,ah
+        getcarry
+        adc     ax,ax
+        clearf  CFlag
+        test    ah,1
+        jz      >M1
+        setf    CFlag
+M1:
+#em
+
+alu_ror macro                           ; rotate right al + carry
+        xor     ah,ah
+        test    ch,CFlag
+        jz      >M1
+        inc     ah
+M1:     clearf  CFlag
+        test    al,1
+        jz      >M2
+        setf    CFlag
+M2:     shr     ax,1
+#em
+
+; ************************************************************************
+;
+;               Effective address calculation section
+;
+; ************************************************************************
+
+eac_zero macro                          ; zero page
+        fetch   al
+        mov     bl,al
+#em
+
+eac_zerox macro                         ; zero page,x
+        fetch   al
+        mov     bl,al
+        add     bl,[_x]
+#em
+
+eac_zeroy macro                         ; zero page,y
+        fetch   al
+        mov     bl,al
+        add     bl,[_y]
+#em
+
+eac_abs macro                           ; absolute
+        fetchaddr
+        mov     bx,ax
+#em
+
+eac_absx macro                          ; absolute,x
+        fetchaddr
+        mov     bl,[_x]
+        xor     bh,bh
+        add     bx,ax
+#em
+
+eac_absy macro                          ; absolute,y
+        fetchaddr
+        mov     bl,[_y]
+        xor     bh,bh
+        add     bx,ax
+#em
+
+eac_indx macro                          ; (indirect,x)
+        fetch   al                      ; read address
+        mov     bl,al
+        add     bl,[_x]                 ; add x to it
+        indread                         ; fetch (bl) to BX
+#em
+
+eac_indy macro                          ; (indirect),y
+        fetch   al                      ; read address
+        mov     bl,al
+        indread                         ; fetch (bl) to BX
+        mov     al,[_y]                 ; add y to it
+        xor     ah,ah
+        add     bx,ax
+#em
+
+eac_relative macro                      ; relative address
+        fetch   al                      ; get offset
+        xor     ah,ah
+        test    al,128                  ; sign extend it
+        jz      >M1
+        dec     ah
+M1:     mov     bx,bp                   ; put result in bx
+        add     bx,ax
+#em
+
+; ************************************************************************
+; ************************************************************************
+
+rpush   macro                           ; push #1 onto stack
+        mov     bl,[_s]
+        writes  #1
+        dec     byte [_s]
+#em
+
+rpop    macro                           ; pop #1 off the stack
+        inc     byte [_s]
+        mov     bl,[_s]
+        reads   #1
+#em
+
+intmode macro                           ; interrupt mode changes
+#em
+
+mathmode macro                          ; math mode changes
+        mov     word [AddVector],AddBinary
+        mov     word [SubVector],SubBinary
+        test    ch,DFlag
+        jz      >M1
+        mov     word [AddVector],AddDecimal
+        mov     word [SubVector],SubDecimal
+M1:
+#em
